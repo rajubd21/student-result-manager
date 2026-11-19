@@ -39,7 +39,7 @@ class Course:
             raise ValueError("Course Title cannot be empty.")
         if not (MIN_CREDIT <= credit <= MAX_CREDIT):
             raise ValueError(f"Credit must be between {MIN_CREDIT} and {MAX_CREDIT}.")
-        
+
         self.course_code = course_code.strip().upper()
         self.title = title.strip()
         self.credit = float(credit)
@@ -49,7 +49,7 @@ class CourseResult:
     def __init__(self, student_id: str, course_code: str, mark: float):
         if not (MIN_MARK <= mark <= MAX_MARK):
             raise ValueError(f"Mark must be between {MIN_MARK} and {MAX_MARK}.")
-        
+
         self.student_id = student_id
         self.course_code = course_code
         self.mark = float(mark)
@@ -68,7 +68,7 @@ class GradeCalculator:
     def calculate_cgpa(cls, results: List[CourseResult], courses_dict: Dict[str, Course]) -> float:
         if not results:
             return 0.00
-        
+
         total_weighted_points = 0.0
         total_credits = 0.0
 
@@ -90,8 +90,7 @@ class ResultManager:
         self._records: Dict[str, List[CourseResult]] = {}
         self._load_default_data()
 
-    def _load_default_data(self):
-        # প্রি-লোডেড স্যাম্পল ডাটা
+    def _load_default_data(self) -> None:
         self.add_student(Student("241118037", "Razu Ahmed"))
         self.add_course(Course("CSE101", "Structured Programming", 3.0))
         self.add_course(Course("MAT101", "Engineering Mathematics", 3.0))
@@ -118,13 +117,19 @@ class ResultManager:
 
         new_result = CourseResult(sid, ccode, mark)
         student_results = self._records[sid]
-        
+
         for idx, res in enumerate(student_results):
             if res.course_code == ccode:
                 student_results[idx] = new_result
                 return
 
         student_results.append(new_result)
+
+    def get_student_results(self, student_id: str) -> List[CourseResult]:
+        sid = student_id.strip()
+        if sid not in self._students:
+            raise KeyError(f"Student ID '{sid}' not found.")
+        return self._records.get(sid, [])
 
     def generate_result_sheet(self, student_id: str) -> str:
         sid = student_id.strip()
@@ -137,7 +142,7 @@ class ResultManager:
 
         lines = [
             "=" * 68,
-            f"                  OFFICIAL ACADEMIC RESULT SHEET",
+            "                  OFFICIAL ACADEMIC RESULT SHEET",
             "=" * 68,
             f"Student Name : {student.name}",
             f"Student ID   : {student.student_id}",
@@ -166,7 +171,7 @@ class ResultManager:
 
 
 # --- CLI INTERFACE ---
-def run_cli():
+def run_cli() -> None:
     manager = ResultManager()
 
     while True:
@@ -180,7 +185,7 @@ def run_cli():
         try:
             choice = input("Enter your choice (1-5): ").strip()
         except EOFError:
-            print("\n[Error] Online compiler input stream ended. Please use Interactive Console.")
+            print("\n[Error] Input stream ended.")
             break
 
         if choice == "5":
