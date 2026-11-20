@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple
 
-# --- CONSTANTS ---
+# --- CONSTANTS (Eliminates Magic Numbers) ---
 MIN_MARK = 0.0
 MAX_MARK = 100.0
 MIN_CREDIT = 0.5
@@ -20,52 +20,64 @@ GRADE_SCALE = [
 ]
 
 
-# --- MODELS ---
+# --- COMMON VALIDATORS (Eliminates Duplicated Code) ---
+class Validator:
+    @staticmethod
+    def validate_text(value: str, field_name: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field_name} cannot be empty.")
+        return value.strip()
+
+    @staticmethod
+    def validate_mark(mark: float) -> float:
+        if isinstance(mark, bool) or not isinstance(mark, (int, float)):
+            raise ValueError("Mark must be a valid number.")
+        if not (MIN_MARK <= mark <= MAX_MARK):
+            raise ValueError(f"Mark must be between {MIN_MARK} and {MAX_MARK}.")
+        return float(mark)
+
+    @staticmethod
+    def validate_credit(credit: float) -> float:
+        if isinstance(credit, bool) or not isinstance(credit, (int, float)):
+            raise ValueError("Credit must be a valid number.")
+        if not (MIN_CREDIT <= credit <= MAX_CREDIT):
+            raise ValueError(f"Credit must be between {MIN_CREDIT} and {MAX_CREDIT}.")
+        return float(credit)
+
+
+# --- MODELS (Separate Responsibilities & Object Usage) ---
 class Student:
     def __init__(self, student_id: str, name: str):
-        if not student_id or not student_id.strip():
-            raise ValueError("Student ID cannot be empty.")
-        if not name or not name.strip():
-            raise ValueError("Student Name cannot be empty.")
-        self.student_id = student_id.strip()
-        self.name = name.strip()
+        self.student_id = Validator.validate_text(student_id, "Student ID")
+        self.name = Validator.validate_text(name, "Student Name")
 
 
 class Course:
     def __init__(self, course_code: str, title: str, credit: float):
-        if not course_code or not course_code.strip():
-            raise ValueError("Course Code cannot be empty.")
-        if not title or not title.strip():
-            raise ValueError("Course Title cannot be empty.")
-        if not (MIN_CREDIT <= credit <= MAX_CREDIT):
-            raise ValueError(f"Credit must be between {MIN_CREDIT} and {MAX_CREDIT}.")
-
-        self.course_code = course_code.strip().upper()
-        self.title = title.strip()
-        self.credit = float(credit)
+        self.course_code = Validator.validate_text(course_code, "Course Code").upper()
+        self.title = Validator.validate_text(title, "Course Title")
+        self.credit = Validator.validate_credit(credit)
 
 
 class CourseResult:
-    def __init__(self, student_id: str, course_code: str, mark: float):
-        if not (MIN_MARK <= mark <= MAX_MARK):
-            raise ValueError(f"Mark must be between {MIN_MARK} and {MAX_MARK}.")
-
-        self.student_id = student_id
-        self.course_code = course_code
-        self.mark = float(mark)
+    def __init__(self, student: Student, course: Course, mark: float):
+        self.student = student
+        self.course = course
+        self.mark = Validator.validate_mark(mark)
 
 
 # --- GRADE CALCULATOR ---
 class GradeCalculator:
     @staticmethod
     def get_grade_and_point(mark: float) -> Tuple[str, float]:
+        valid_mark = Validator.validate_mark(mark)
         for min_score, letter_grade, grade_point in GRADE_SCALE:
-            if mark >= min_score:
+            if valid_mark >= min_score:
                 return letter_grade, grade_point
         return "F", 0.00
 
     @classmethod
-    def calculate_cgpa(cls, results: List[CourseResult], courses_dict: Dict[str, Course]) -> float:
+    def calculate_cgpa(cls, results: List[CourseResult]) -> float:
         if not results:
             return 0.00
 
@@ -73,11 +85,9 @@ class GradeCalculator:
         total_credits = 0.0
 
         for res in results:
-            course = courses_dict.get(res.course_code)
-            if course:
-                _, grade_point = cls.get_grade_and_point(res.mark)
-                total_weighted_points += grade_point * course.credit
-                total_credits += course.credit
+            _, grade_point = cls.get_grade_and_point(res.mark)
+            total_weighted_points += grade_point * res.course.credit
+            total_credits += res.course.credit
 
         return round(total_weighted_points / total_credits, 2) if total_credits > 0 else 0.00
 
@@ -87,58 +97,39 @@ class ResultManager:
     def __init__(self):
         self._students: Dict[str, Student] = {}
         self._courses: Dict[str, Course] = {}
-        self._records: Dict[str, List[CourseResult]] = {}
-        self._load_default_data()
+        self._records: Dict[str, Dict[str, CourseResult]] = {}
+        self._seed_default_data()
 
-    def _load_default_data(self) -> None:
+    def _seed_default_data(self) -> None:
         self.add_student(Student("241118037", "Razu Ahmed"))
         self.add_course(Course("CSE101", "Structured Programming", 3.0))
         self.add_course(Course("MAT101", "Engineering Mathematics", 3.0))
 
     def add_student(self, student: Student) -> None:
         if student.student_id in self._students:
-            raise ValueError(f"Student ID '{student.student_id}' already exists!")
+            raise ValueError(f"Student ID '{student.student_id}' already exists.")
         self._students[student.student_id] = student
-        self._records[student.student_id] = []
+        self._records[student.student_id] = {}
 
     def add_course(self, course: Course) -> None:
         if course.course_code in self._courses:
-            raise ValueError(f"Course Code '{course.course_code}' already exists!")
+            raise ValueError(f"Course Code '{course.course_code}' already exists.")
         self._courses[course.course_code] = course
 
     def record_mark(self, student_id: str, course_code: str, mark: float) -> None:
-        sid = student_id.strip()
-        ccode = course_code.strip().upper()
-
-        if sid not in self._students:
-            raise KeyError(f"Student ID '{sid}' not found.")
-        if ccode not in self._courses:
-            raise KeyError(f"Course Code '{ccode}' not found.")
-
-        new_result = CourseResult(sid, ccode, mark)
-        student_results = self._records[sid]
-
-        for idx, res in enumerate(student_results):
-            if res.course_code == ccode:
-                student_results[idx] = new_result
-                return
-
-        student_results.append(new_result)
+        student = self._get_student(student_id)
+        course = self._get_course(course_code)
+        result = CourseResult(student, course, mark)
+        self._records[student.student_id][course.course_code] = result
 
     def get_student_results(self, student_id: str) -> List[CourseResult]:
-        sid = student_id.strip()
-        if sid not in self._students:
-            raise KeyError(f"Student ID '{sid}' not found.")
-        return self._records.get(sid, [])
+        student = self._get_student(student_id)
+        return list(self._records[student.student_id].values())
 
     def generate_result_sheet(self, student_id: str) -> str:
-        sid = student_id.strip()
-        if sid not in self._students:
-            raise KeyError(f"Student ID '{sid}' not found.")
-
-        student = self._students[sid]
-        results = self._records.get(sid, [])
-        cgpa = GradeCalculator.calculate_cgpa(results, self._courses)
+        student = self._get_student(student_id)
+        results = self.get_student_results(student_id)
+        cgpa = GradeCalculator.calculate_cgpa(results)
 
         lines = [
             "=" * 68,
@@ -155,11 +146,10 @@ class ResultManager:
             lines.append("No marks recorded for this student yet.")
         else:
             for res in results:
-                course = self._courses[res.course_code]
                 grade, point = GradeCalculator.get_grade_and_point(res.mark)
                 lines.append(
-                    f"{course.course_code:<15} {course.title:<25} "
-                    f"{course.credit:<8.1f} {res.mark:<8.2f} {grade:<6} {point:<6.2f}"
+                    f"{res.course.course_code:<15} {res.course.title:<25} "
+                    f"{res.course.credit:<8.1f} {res.mark:<8.2f} {grade:<6} {point:<6.2f}"
                 )
 
         lines.extend([
@@ -168,6 +158,18 @@ class ResultManager:
             "=" * 68,
         ])
         return "\n".join(lines)
+
+    def _get_student(self, student_id: str) -> Student:
+        sid = Validator.validate_text(student_id, "Student ID")
+        if sid not in self._students:
+            raise KeyError(f"Student ID '{sid}' not found.")
+        return self._students[sid]
+
+    def _get_course(self, course_code: str) -> Course:
+        ccode = Validator.validate_text(course_code, "Course Code").upper()
+        if ccode not in self._courses:
+            raise KeyError(f"Course Code '{ccode}' not found.")
+        return self._courses[ccode]
 
 
 # --- CLI INTERFACE ---
@@ -185,7 +187,6 @@ def run_cli() -> None:
         try:
             choice = input("Enter your choice (1-5): ").strip()
         except EOFError:
-            print("\n[Error] Input stream ended.")
             break
 
         if choice == "5":
